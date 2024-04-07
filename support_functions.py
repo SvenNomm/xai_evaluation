@@ -2,6 +2,10 @@
 
 import numpy as np
 import itertools
+from sklearn.metrics import accuracy_score, recall_score, precision_score, f1_score
+import shap
+import lime
+import lime.lime_tabular
 
 
 def project_data(data_set, feature_set, idx_column):
@@ -9,8 +13,8 @@ def project_data(data_set, feature_set, idx_column):
 
     data_set_proj = data_set[:, feature_set]
     if idx_column:
-        data_test = data_set[:, m-1].reshape(-1, 1)
-        data_set_proj = np.hstack((data_set_proj, data_set[:, m-1].reshape(-1, 1)))
+        data_test = data_set[:, m - 1].reshape(-1, 1)
+        data_set_proj = np.hstack((data_set_proj, data_set[:, m - 1].reshape(-1, 1)))
 
     return data_set_proj
 
@@ -18,7 +22,7 @@ def project_data(data_set, feature_set, idx_column):
 def select_classes(data_set, cluster_set):
     n, m = data_set.shape
     desired_classes = np.array(cluster_set)
-    mask = np.isin(element=data_set[:,m-1], test_elements=desired_classes)
+    mask = np.isin(element=data_set[:, m - 1], test_elements=desired_classes)
     new_data_set = data_set[mask]
     return new_data_set
 
@@ -44,8 +48,8 @@ def n2one_position_converter(coordinates, grid_shape):
     k = coordinates[0]
     grid_shape = np.array(grid_shape)
     for i in range(1, dimensionality):
-        a = np.prod(grid_shape[1:i+1])
-        k = k + np.prod(grid_shape[1:i+1]) * (coordinates[i])
+        a = np.prod(grid_shape[1:i + 1])
+        k = k + np.prod(grid_shape[1:i + 1]) * (coordinates[i])
 
     return k
 
@@ -54,14 +58,14 @@ def get_grid(data_set, step_size, idx_column):
     n, m = data_set.shape
 
     if idx_column:
-        m = m-1
+        m = m - 1
 
     lower_bounds = np.min(data_set[:, 0:m], axis=0)
     upper_bounds = np.max(data_set[:, 0:m], axis=0)
     min_low = np.min(lower_bounds)
     max_upper = np.max(upper_bounds)
     temp_array = np.arange(start=min_low, stop=max_upper, step=step_size)
-    #n_temp, _ = temp_array.shape
+    # n_temp, _ = temp_array.shape
     n_temp = len(temp_array)
 
     grid_sources = np.zeros((m, n_temp))
@@ -108,3 +112,39 @@ def get_decision_boundary(grid_elements, y_hat, flat_grid):
 
     decision_boundary = np.array(decision_boundary_points)
     return decision_boundary
+
+
+def classify_and_explain(X_train, X_test, y_train, y_test, flat_grid, classifier, explainer, data_name, print_metrics):
+    classifier.fit(X_train, y_train)
+    y_hat = classifier.predict(X_test)
+    classifier_name = type(classifier)
+
+    if print_metrics:
+        print(data_name, ' ', classifier_name, ' accuracy score: ', accuracy_score(y_test, y_hat))
+        print(data_name, ' ', classifier_name, ' precision score: ', precision_score(y_test, y_hat))
+        print(data_name, ' ', classifier_name, ' recall score: ', recall_score(y_test, y_hat))
+        print(data_name, ' ', classifier_name, ' f1 score: ', f1_score(y_test, y_hat))
+
+    hat_grid = classifier.predict(flat_grid)
+
+    explainer_type_internal = type(explainer).__name__
+    print('Using: ', explainer)
+    exp_grid_weights = []
+    if explainer_type_internal == 'LimeTabularExplainer':
+        print('lime')
+        x = flat_grid[:, 0]
+        n_grid = len(flat_grid)
+        exp_grid_weights = np.zeros((n_grid, 2))
+
+        for i in range(0, n_grid):
+            exp_svc_rot = explainer.explain_instance(data_row=flat_grid[i, :], predict_fn=classifier.predict_proba)
+            exp_grid_weights[i, 1] = exp_svc_rot.as_list()[0][1]
+            exp_grid_weights[i, 0] = exp_svc_rot.as_list()[1][1]  # NB!  observe the chane of indexes due to the fact
+            # that second feature comes first
+
+    elif explainer_type_internal == 'Kernel':
+        print('shap')
+        explainer_shap = shap.KernelExplainer(classifier.predict_proba, X_train)
+        exp_grid_weights = explainer_shap.shap_values(flat_grid)
+
+    return y_hat, hat_grid, exp_grid_weights
