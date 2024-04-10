@@ -6,7 +6,7 @@ from sklearn.metrics import accuracy_score, recall_score, precision_score, f1_sc
 import shap
 import lime
 import lime.lime_tabular
-
+from sklearn.metrics import DistanceMetric
 
 def project_data(data_set, feature_set, idx_column):
     n, m = data_set.shape
@@ -101,6 +101,47 @@ def get_decision_boundary(grid_elements, y_hat, flat_grid):
         internal_shapes = []
         for cnp in cube_neighbourhood:
             internal_shapes.append(internal_shape)
+        cube_neighbourhood_k_flattened_1 = map(n2one_position_converter, cube_neighbourhood, internal_shapes)
+        cube_neighbourhood_k_flattened_2 = list(cube_neighbourhood_k_flattened_1)
+        cube_neighbourhood_k_flattened = list(map(lambda x: int(x), cube_neighbourhood_k_flattened_2))
+
+        neighbourhood_labels = y_hat[cube_neighbourhood_k_flattened]
+        if not all(x == neighbourhood_labels[0] for x in neighbourhood_labels):
+            k = n2one_position_converter(point, internal_shape)
+            decision_boundary_points.append(flat_grid[k, :])
+
+    decision_boundary = np.array(decision_boundary_points)
+    return decision_boundary
+
+
+def get_epsilon_decision_boundary(grid_elements, y_hat, flat_grid, epsilon, metric_name):
+    m = len(grid_elements)
+    internal_shape = grid_elements[0].shape
+
+    temp_idx = np.arange(start=1, stop=internal_shape[0] - 1, step=1)
+    idx_array = np.zeros((m, internal_shape[0]))
+
+    index_scales = []
+    for j in range(m):
+        index_scales.append(temp_idx)
+
+    grid_points = list(item for item in itertools.product(*index_scales, repeat=1))
+    decision_boundary_points = []
+
+    dist = DistanceMetric.get_metric(metric_name)
+
+    for point in grid_points:
+        cube_neighbourhood = get_cube_neighbourhood(point)
+        pnt = np.asarray(point).reshape(1, -1)
+        internal_shapes = []
+        epsilon_neighbourhood = []
+        for cnp in cube_neighbourhood:
+            internal_shapes.append(internal_shape)
+            cnpp = np.asarray(cnp).reshape(1, -1)
+            a = dist.pairwise(pnt, cnpp)
+            if dist.pairwise(pnt, cnpp)[0, 0] <= epsilon:
+                epsilon_neighbourhood.append(cnp)
+
         cube_neighbourhood_k_flattened_1 = map(n2one_position_converter, cube_neighbourhood, internal_shapes)
         cube_neighbourhood_k_flattened_2 = list(cube_neighbourhood_k_flattened_1)
         cube_neighbourhood_k_flattened = list(map(lambda x: int(x), cube_neighbourhood_k_flattened_2))
