@@ -169,7 +169,7 @@ def classify_and_explain(X_train, X_test, y_train, y_test, flat_grid, classifier
     hat_grid = classifier.predict(flat_grid)
 
     explainer_type_internal = type(explainer).__name__
-    print('Using: ', explainer)
+    print('Using: ', explainer_type_internal)
     exp_grid_weights = []
     if explainer_type_internal == 'LimeTabularExplainer':
         print('lime')
@@ -183,7 +183,7 @@ def classify_and_explain(X_train, X_test, y_train, y_test, flat_grid, classifier
             exp_grid_weights[i, 0] = exp_svc_rot.as_list()[1][1]  # NB!  observe the chane of indexes due to the fact
             # that second feature comes first
 
-    elif explainer_type_internal == 'Kernel':
+    elif explainer_type_internal == 'str':
         print('shap')
         explainer_shap = shap.KernelExplainer(classifier.predict_proba, X_train)
         exp_grid_weights = explainer_shap.shap_values(flat_grid)
