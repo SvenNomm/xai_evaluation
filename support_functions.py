@@ -8,6 +8,9 @@ import lime
 import lime.lime_tabular
 from sklearn.metrics import DistanceMetric
 
+from aix360.metrics.local_metrics import faithfulness_metric
+from aix360.metrics.local_metrics import monotonicity_metric
+
 def project_data(data_set, feature_set, idx_column):
     n, m = data_set.shape
 
@@ -189,3 +192,56 @@ def classify_and_explain(X_train, X_test, y_train, y_test, flat_grid, classifier
         exp_grid_weights = explainer_shap.shap_values(flat_grid)
 
     return y_hat, hat_grid, exp_grid_weights
+
+
+def classify_explain_evaluate(X_train, X_test, y_train, y_test, flat_grid, classifier, explainer, data_name,
+                              print_metrics):
+    classifier.fit(X_train, y_train)
+    y_hat = classifier.predict(X_test)
+    classifier_name = type(classifier)
+
+    if print_metrics:
+        print(data_name, ' ', classifier_name, ' accuracy score: ', accuracy_score(y_test, y_hat))
+        print(data_name, ' ', classifier_name, ' precision score: ', precision_score(y_test, y_hat))
+        print(data_name, ' ', classifier_name, ' recall score: ', recall_score(y_test, y_hat))
+        print(data_name, ' ', classifier_name, ' f1 score: ', f1_score(y_test, y_hat))
+
+    hat_grid = classifier.predict(flat_grid)
+
+    explainer_type_internal = type(explainer).__name__
+    print('Using: ', explainer_type_internal)
+    exp_grid_weights = []
+    if explainer_type_internal == 'LimeTabularExplainer':
+        print('lime')
+        x = flat_grid[:, 0]
+        n_grid = len(flat_grid)
+        exp_grid_weights = np.zeros((n_grid, 2))
+        faithfulness = np.zeros((n_grid, 1))
+        monotonicity = np.zeros((n_grid, 1))
+
+
+        for i in range(0, n_grid):
+            exp_svc_rot = explainer.explain_instance(data_row=flat_grid[i, :], predict_fn=classifier.predict_proba)
+            le = exp_svc_rot.local_exp[y_hat[i]]
+            m =  exp_svc_rot.as_map()
+            xr = X_test[i, :]
+            coefs = np.zeros(xr.shape[0])
+            for v in le:
+                coefs[v[0]] = v[1]
+
+            base = np.zeros(xr.shape[0])
+            faithfulness[i, 0] = faithfulness_metric(classifier, xr, coefs, base)
+            monotonicity[i, 0] = monotonicity_metric(classifier, xr, coefs, base)
+
+
+
+            exp_grid_weights[i, 1] = exp_svc_rot.as_list()[0][1]
+            exp_grid_weights[i, 0] = exp_svc_rot.as_list()[1][1]  # NB!  observe the chane of indexes due to the fact
+            # that second feature comes first
+
+    elif explainer_type_internal == 'str':
+        print('shap')
+        explainer_shap = shap.KernelExplainer(classifier.predict_proba, X_train)
+        exp_grid_weights = explainer_shap.shap_values(flat_grid)
+
+    return y_hat, hat_grid, exp_grid_weights, faithfulness, monotonicity
