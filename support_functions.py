@@ -219,11 +219,10 @@ def classify_explain_evaluate(X_train, X_test, y_train, y_test, flat_grid, class
         faithfulness = np.zeros((n_grid, 1))
         monotonicity = np.zeros((n_grid, 1))
 
-
         for i in range(0, n_grid):
             exp_svc_rot = explainer.explain_instance(data_row=flat_grid[i, :], predict_fn=classifier.predict_proba)
             le = exp_svc_rot.local_exp[y_hat[i]]
-            m =  exp_svc_rot.as_map()
+            m =  le.as_map()
             xr = X_test[i, :]
             coefs = np.zeros(xr.shape[0])
             for v in le:
